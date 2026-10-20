@@ -1,0 +1,1257 @@
+/*
+ * Kanban Premium — camada visual sobre o plugin Kanban nativo do Hermes.
+ *
+ * - Escopo: só elementos .hermes-kanban* (board, drawer, dialogs, bulk bar).
+ * - Cores derivadas do tema ativo do dashboard (--background / --color-midground),
+ *   então continua harmônico se o tema mudar. Cor de status só em pontos e barras.
+ * - Especificidade: prefixo "html[data-kp]" para vencer o CSS original e os
+ *   utilitários Tailwind dos componentes do SDK sem usar !important em massa.
+ * - Remover a pasta do plugin desfaz tudo.
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+html[data-kp] .hermes-kanban,
+html[data-kp] .hermes-kanban-drawer,
+html[data-kp] .hermes-kanban-drawer-shade,
+html[data-kp] .hermes-kanban-dialog,
+html[data-kp] .hermes-kanban-dialog-backdrop,
+html[data-kp] .hermes-kanban-bulk,
+html[data-kp] .hermes-kanban-trash,
+html[data-kp] .hermes-kanban-drag-ghost {
+  --kp-ink: var(--color-midground, #ededed);
+  --kp-base: var(--background, #0a0a0a);
+
+  --kp-bg:      color-mix(in srgb, var(--kp-base) 100%, transparent);
+  --kp-col:     color-mix(in srgb, var(--kp-ink) 2.5%, var(--kp-base));
+  --kp-card:    color-mix(in srgb, var(--kp-ink) 5%, var(--kp-base));
+  --kp-card-h:  color-mix(in srgb, var(--kp-ink) 7.5%, var(--kp-base));
+  --kp-raise:   color-mix(in srgb, var(--kp-ink) 9%, var(--kp-base));
+  --kp-panel:   color-mix(in srgb, var(--kp-ink) 3.5%, var(--kp-base));
+
+  --kp-line:    color-mix(in srgb, var(--kp-ink) 8%, transparent);
+  --kp-line-2:  color-mix(in srgb, var(--kp-ink) 14%, transparent);
+  --kp-line-3:  color-mix(in srgb, var(--kp-ink) 24%, transparent);
+
+  --kp-text:    color-mix(in srgb, var(--kp-ink) 94%, transparent);
+  --kp-text-2:  color-mix(in srgb, var(--kp-ink) 62%, transparent);
+  --kp-text-3:  color-mix(in srgb, var(--kp-ink) 40%, transparent);
+
+  --kp-c-triage:    #a78bfa;
+  --kp-c-todo:      #8b8b93;
+  --kp-c-scheduled: #7aa2f7;
+  --kp-c-ready:     #e0b354;
+  --kp-c-running:   #4ade80;
+  --kp-c-blocked:   #f87171;
+  --kp-c-review:    #38bdf8;
+  --kp-c-done:      #818cf8;
+  --kp-c-archived:  #5b5b63;
+
+  --kp-r-sm: 6px;
+  --kp-r:    10px;
+  --kp-r-lg: 14px;
+
+  --kp-shadow-1: 0 1px 0 0 color-mix(in srgb, var(--kp-ink) 4%, transparent) inset,
+                 0 1px 2px rgba(0, 0, 0, .35);
+  --kp-shadow-2: 0 1px 0 0 color-mix(in srgb, var(--kp-ink) 6%, transparent) inset,
+                 0 8px 24px -8px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .3);
+  --kp-shadow-3: 0 24px 64px -12px rgba(0, 0, 0, .7), 0 0 0 1px var(--kp-line-2);
+
+  --kp-font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --kp-mono: "JetBrains Mono", "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
+
+  font-family: var(--kp-font);
+  font-feature-settings: "cv11", "ss01", "tnum";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+  color: var(--kp-text);
+}
+
+/* Fontes do tema (Mondwest / Collapse / Courier) saem de dentro do board. */
+html[data-kp] .hermes-kanban :is(.font-mondwest, .font-compressed, .font-courier, .font-mono, .text-display, label, input, textarea, select, button),
+html[data-kp] .hermes-kanban-drawer :is(.font-mondwest, .font-compressed, .font-courier, .font-mono, .text-display, label, input, textarea, select, button),
+html[data-kp] .hermes-kanban-dialog :is(.font-mondwest, .font-compressed, .font-courier, .font-mono, .text-display, label, input, textarea, select, button),
+html[data-kp] .hermes-kanban-bulk :is(.font-mondwest, .font-compressed, .font-courier, .font-mono, .text-display, label, input, textarea, select, button) {
+  font-family: var(--kp-font);
+  letter-spacing: -0.005em;
+  text-transform: none;
+}
+
+html[data-kp] .hermes-kanban { gap: 14px; }
+
+/* ----------------------------------------------------------- form controls */
+
+/* Botões do SDK (todos chegam como .font-mono com fundo creme sólido). */
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-card);
+  color: var(--kp-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  box-shadow: var(--kp-shadow-1);
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .06s ease;
+  filter: none;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn]:hover:not(:disabled) {
+  background: var(--kp-card-h);
+  border-color: var(--kp-line-3);
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn]:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: none;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn]:disabled,
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn][data-kp-btn]:disabled {
+  opacity: .45;
+  background: transparent;
+  border-color: var(--kp-line-2);
+  color: var(--kp-text-2);
+  box-shadow: none;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn="primary"] {
+  background: var(--kp-ink);
+  border-color: var(--kp-ink);
+  color: var(--kp-base);
+  font-weight: 600;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn="primary"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--kp-ink) 88%, var(--kp-base));
+  border-color: transparent;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn="danger"] {
+  color: var(--kp-c-blocked);
+  border-color: color-mix(in srgb, var(--kp-c-blocked) 30%, transparent);
+  background: color-mix(in srgb, var(--kp-c-blocked) 7%, var(--kp-card));
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn="danger"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--kp-c-blocked) 14%, var(--kp-card));
+  border-color: color-mix(in srgb, var(--kp-c-blocked) 45%, transparent);
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button[data-kp-btn="warn"] {
+  color: var(--kp-c-ready);
+  border-color: color-mix(in srgb, var(--kp-c-ready) 28%, transparent);
+  background: color-mix(in srgb, var(--kp-c-ready) 6%, var(--kp-card));
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) button[data-kp-btn] .arc-border { display: none; }
+
+/* Inputs, selects (trigger), textareas. */
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) :is(input:not([type=checkbox]):not([type=file]), textarea, select, .hermes-kanban-textarea, div.relative > button.justify-between) {
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-panel);
+  color: var(--kp-text);
+  font-size: 13px;
+  padding: 0 11px;
+  box-shadow: 0 1px 0 0 rgba(0,0,0,.25) inset;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) :is(textarea, .hermes-kanban-textarea) {
+  height: auto;
+  min-height: 96px;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) :is(input, textarea, select, div.relative > button.justify-between):hover {
+  border-color: var(--kp-line-3);
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) :is(input, textarea, select, div.relative > button.justify-between):focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--kp-ink) 40%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kp-ink) 10%, transparent);
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) input::placeholder,
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) textarea::placeholder {
+  color: var(--kp-text-3);
+}
+html[data-kp] .hermes-kanban div.relative.h-8 { height: 34px; }
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) div.relative > button.justify-between svg { opacity: .55; }
+
+/* Checkbox (Radix). */
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button.peer {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--kp-line-3);
+  background: transparent;
+  transition: background .12s ease, border-color .12s ease;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button.peer[data-state=checked],
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button.peer[data-state=indeterminate] {
+  background: var(--kp-ink);
+  border-color: var(--kp-ink);
+  color: var(--kp-base);
+}
+
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog, .hermes-kanban-bulk) button.peer svg {
+  color: var(--kp-base);
+  width: 11px; height: 11px;
+}
+
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) input[type=checkbox] {
+  accent-color: var(--kp-ink);
+  width: 14px; height: 14px;
+}
+
+/* Labels de campo (antes: Mondwest caixa alta espaçada). */
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer, .hermes-kanban-dialog) label.font-mondwest,
+html[data-kp] .hermes-kanban-boardswitcher .text-\[11px\] {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--kp-text-3);
+  letter-spacing: 0;
+  text-transform: none;
+}
+html[data-kp] .hermes-kanban label.text-xs { color: var(--kp-text-2); font-size: 12.5px; }
+
+/* --------------------------------------------------------- header / toolbar */
+
+html[data-kp] .hermes-kanban-boardswitcher {
+  background: var(--kp-panel);
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--kp-shadow-1);
+}
+html[data-kp] .hermes-kanban-boardswitcher-inner { gap: 10px; align-items: flex-end; }
+html[data-kp] .hermes-kanban-boardswitcher div.relative > button.justify-between {
+  height: 36px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  background: var(--kp-card);
+}
+html[data-kp] .hermes-kanban-boardswitcher span.text-xs {
+  font-size: 12px;
+  color: var(--kp-text-3);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--kp-line);
+  background: var(--kp-col);
+  font-variant-numeric: tabular-nums;
+}
+html[data-kp] .hermes-kanban-docs-link {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-card);
+  color: var(--kp-text-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  text-decoration: none;
+}
+html[data-kp] .hermes-kanban-docs-link:hover { color: var(--kp-text); border-color: var(--kp-line-3); }
+
+/* Pílula "Orchestration: Auto". */
+html[data-kp] .hermes-kanban > div > button.rounded-full {
+  border-color: color-mix(in srgb, var(--kp-c-running) 30%, transparent);
+  background: color-mix(in srgb, var(--kp-c-running) 8%, transparent);
+  color: color-mix(in srgb, var(--kp-c-running) 85%, var(--kp-ink));
+  padding: 3px 10px 3px 8px;
+  font-size: 12px;
+  gap: 6px;
+}
+html[data-kp] .hermes-kanban > div > button.rounded-full::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--kp-c-running);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kp-c-running) 18%, transparent);
+}
+html[data-kp] .hermes-kanban > div > button.underline {
+  text-decoration: none;
+  color: var(--kp-text-3);
+  font-size: 12px;
+}
+html[data-kp] .hermes-kanban > div > button.underline:hover { color: var(--kp-text); }
+
+/* Barra de filtros vira um painel único. */
+html[data-kp] .hermes-kanban > div.flex.flex-wrap.items-end {
+  background: var(--kp-panel);
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r-lg);
+  padding: 12px 14px;
+  gap: 12px;
+  box-shadow: var(--kp-shadow-1);
+}
+
+/* Faixa de atenção. */
+html[data-kp] .hermes-kanban-attention {
+  border-radius: var(--kp-r);
+  border: 1px solid color-mix(in srgb, var(--kp-c-ready) 25%, transparent);
+  background: color-mix(in srgb, var(--kp-c-ready) 6%, var(--kp-panel));
+  overflow: hidden;
+}
+html[data-kp] .hermes-kanban-attention--error,
+html[data-kp] .hermes-kanban-attention--critical {
+  border-color: color-mix(in srgb, var(--kp-c-blocked) 30%, transparent);
+  background: color-mix(in srgb, var(--kp-c-blocked) 7%, var(--kp-panel));
+}
+html[data-kp] .hermes-kanban-attention-bar { padding: 9px 12px; gap: 10px; font-size: 13px; }
+html[data-kp] .hermes-kanban-attention-icon { color: var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-attention-text { color: var(--kp-text); font-weight: 500; }
+html[data-kp] :is(.hermes-kanban-attention-toggle, .hermes-kanban-attention-dismiss, .hermes-kanban-attention-row-btn) {
+  border-radius: 6px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-card);
+  color: var(--kp-text-2);
+  font-size: 12px;
+  padding: 3px 9px;
+}
+html[data-kp] :is(.hermes-kanban-attention-toggle, .hermes-kanban-attention-dismiss, .hermes-kanban-attention-row-btn):hover { color: var(--kp-text); border-color: var(--kp-line-3); }
+html[data-kp] .hermes-kanban-attention-row { border-top: 1px solid var(--kp-line); padding: 8px 12px; font-size: 12.5px; }
+html[data-kp] .hermes-kanban-attention-row-id { font-family: var(--kp-mono); color: var(--kp-text-3); font-size: 11px; }
+
+/* ------------------------------------------------------------------ columns */
+
+html[data-kp] .hermes-kanban-columns {
+  gap: 12px;
+  padding-bottom: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--kp-line-2) transparent;
+}
+html[data-kp] .hermes-kanban-column {
+  --kp-st: var(--kp-c-todo);
+  background: var(--kp-col);
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r-lg);
+  padding: 0;
+  min-width: 288px;
+  width: 288px;
+  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .15s ease, background .15s ease;
+}
+html[data-kp] .hermes-kanban-column::before {
+  /* fio de status no topo da coluna */
+  content: "";
+  position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, var(--kp-st), color-mix(in srgb, var(--kp-st) 0%, transparent) 85%);
+  opacity: .75;
+}
+html[data-kp] .hermes-kanban-column[data-kp-status=triage]    { --kp-st: var(--kp-c-triage); }
+html[data-kp] .hermes-kanban-column[data-kp-status=todo]      { --kp-st: var(--kp-c-todo); }
+html[data-kp] .hermes-kanban-column[data-kp-status=scheduled] { --kp-st: var(--kp-c-scheduled); }
+html[data-kp] .hermes-kanban-column[data-kp-status=ready]     { --kp-st: var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-column[data-kp-status=running]   { --kp-st: var(--kp-c-running); }
+html[data-kp] .hermes-kanban-column[data-kp-status=blocked]   { --kp-st: var(--kp-c-blocked); }
+html[data-kp] .hermes-kanban-column[data-kp-status=review]    { --kp-st: var(--kp-c-review); }
+html[data-kp] .hermes-kanban-column[data-kp-status=done]      { --kp-st: var(--kp-c-done); }
+html[data-kp] .hermes-kanban-column[data-kp-status=archived]  { --kp-st: var(--kp-c-archived); }
+
+html[data-kp] .hermes-kanban-column--drop {
+  border-color: color-mix(in srgb, var(--kp-st) 55%, transparent);
+  background: color-mix(in srgb, var(--kp-st) 6%, var(--kp-col));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kp-st) 12%, transparent);
+}
+
+html[data-kp] .hermes-kanban-column-header {
+  padding: 14px 12px 4px 14px;
+  gap: 8px;
+  align-items: center;
+}
+html[data-kp] .hermes-kanban-column-header button.peer {
+  opacity: 0; width: 0; min-width: 0; margin-right: -8px; border-width: 0;
+  transition: opacity .12s ease, width .12s ease, margin .12s ease;
+}
+html[data-kp] .hermes-kanban-column:hover .hermes-kanban-column-header button.peer,
+html[data-kp] .hermes-kanban-column-header button.peer[data-state=checked],
+html[data-kp] .hermes-kanban-column-header button.peer[data-state=indeterminate] {
+  opacity: 1; width: 15px; margin-right: 0; border-width: 1px;
+}
+html[data-kp] .hermes-kanban-column-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--kp-text);
+  text-transform: none;
+}
+html[data-kp] .hermes-kanban-column-count {
+  margin-left: 2px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kp-ink) 7%, transparent);
+  color: var(--kp-text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+html[data-kp] .hermes-kanban-column-add {
+  margin-left: auto;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--kp-text-3);
+  font-size: 16px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+html[data-kp] .hermes-kanban-column-add:hover {
+  color: var(--kp-text);
+  background: var(--kp-card-h);
+  border-color: var(--kp-line-2);
+}
+html[data-kp] .hermes-kanban-column-sub {
+  padding: 0 14px 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--kp-text-3);
+  border-bottom: 1px solid var(--kp-line);
+  margin: 0;
+}
+html[data-kp] .hermes-kanban-column-body {
+  padding: 10px;
+  gap: 8px;
+  min-height: 120px;
+}
+html[data-kp] .hermes-kanban-empty {
+  border: 1px dashed var(--kp-line-2);
+  border-radius: var(--kp-r);
+  color: var(--kp-text-3);
+  font-size: 12px;
+  padding: 22px 10px;
+  background: transparent;
+  text-align: center;
+}
+
+/* Status dots. */
+html[data-kp] .hermes-kanban-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--kp-c-todo);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent);
+  flex: none;
+}
+html[data-kp] .hermes-kanban-dot-triage   { background: var(--kp-c-triage); }
+html[data-kp] .hermes-kanban-dot-todo     { background: var(--kp-c-todo); }
+html[data-kp] .hermes-kanban-dot-ready    { background: var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-dot-running  { background: var(--kp-c-running); animation: kp-pulse 2s ease-in-out infinite; }
+html[data-kp] .hermes-kanban-dot-blocked  { background: var(--kp-c-blocked); }
+html[data-kp] .hermes-kanban-dot-review   { background: var(--kp-c-review); }
+html[data-kp] .hermes-kanban-dot-done     { background: var(--kp-c-done); }
+html[data-kp] .hermes-kanban-dot-archived { background: var(--kp-c-archived); }
+html[data-kp] .hermes-kanban-column[data-kp-status=scheduled] .hermes-kanban-dot { background: var(--kp-c-scheduled); }
+
+@keyframes kp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kp-c-running) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--kp-c-running) 0%, transparent); }
+}
+
+/* Lanes por profile. */
+html[data-kp] .hermes-kanban-lane { gap: 8px; display: flex; flex-direction: column; }
+html[data-kp] .hermes-kanban-lane + .hermes-kanban-lane { margin-top: 6px; }
+html[data-kp] .hermes-kanban-lane-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 2px 0;
+  border: 0;
+  font-size: 11.5px;
+  color: var(--kp-text-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+html[data-kp] .hermes-kanban-lane-name { font-weight: 500; font-family: var(--kp-font); display: inline-flex; align-items: center; gap: 6px; }
+html[data-kp] .hermes-kanban-lane-count { margin-left: auto; color: var(--kp-text-3); font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------------------- cards */
+
+html[data-kp] .hermes-kanban-card {
+  --kp-st: var(--kp-c-todo);
+  position: relative;
+  border-radius: var(--kp-r);
+  transition: transform .14s ease;
+}
+html[data-kp] .hermes-kanban-card[data-kp-status=triage]    { --kp-st: var(--kp-c-triage); }
+html[data-kp] .hermes-kanban-card[data-kp-status=scheduled] { --kp-st: var(--kp-c-scheduled); }
+html[data-kp] .hermes-kanban-card[data-kp-status=ready]     { --kp-st: var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-card[data-kp-status=running]   { --kp-st: var(--kp-c-running); }
+html[data-kp] .hermes-kanban-card[data-kp-status=blocked]   { --kp-st: var(--kp-c-blocked); }
+html[data-kp] .hermes-kanban-card[data-kp-status=review]    { --kp-st: var(--kp-c-review); }
+html[data-kp] .hermes-kanban-card[data-kp-status=done]      { --kp-st: var(--kp-c-done); }
+
+html[data-kp] .hermes-kanban-card > div {
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r);
+  background: var(--kp-card);
+  box-shadow: var(--kp-shadow-1);
+  overflow: hidden;
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+html[data-kp] .hermes-kanban-card:hover { transform: translateY(-1px); }
+html[data-kp] .hermes-kanban-card:hover > div {
+  background: var(--kp-card-h);
+  border-color: var(--kp-line-2);
+  box-shadow: var(--kp-shadow-2);
+}
+html[data-kp] .hermes-kanban-card:active { transform: translateY(0); }
+
+/* Barra lateral: só em estados que pedem atenção. */
+html[data-kp] .hermes-kanban-card:is([data-kp-status=running], [data-kp-status=blocked], [data-kp-status=review]) > div {
+  box-shadow: inset 2px 0 0 0 var(--kp-st), var(--kp-shadow-1);
+}
+html[data-kp] .hermes-kanban-card:is([data-kp-status=running], [data-kp-status=blocked], [data-kp-status=review]):hover > div {
+  box-shadow: inset 2px 0 0 0 var(--kp-st), var(--kp-shadow-2);
+}
+/* Feito: tom mais baixo. */
+html[data-kp] .hermes-kanban-card[data-kp-status=done] .hermes-kanban-card-title { color: var(--kp-text-2); }
+
+html[data-kp] .hermes-kanban-card-content {
+  padding: 11px 12px 10px;
+  gap: 7px;
+  box-shadow: none;
+  border-radius: var(--kp-r);
+}
+html[data-kp] .hermes-kanban-card-row { gap: 6px; align-items: center; flex-wrap: wrap; }
+html[data-kp] .hermes-kanban-card-check-wrap {
+  width: 0; overflow: hidden; margin-right: -6px;
+  transition: width .12s ease, margin .12s ease;
+}
+html[data-kp] .hermes-kanban-card:hover .hermes-kanban-card-check-wrap,
+html[data-kp] .hermes-kanban-card--selected .hermes-kanban-card-check-wrap,
+html[data-kp] .hermes-kanban-card-check-wrap:has(button[data-state=checked]) {
+  width: 16px; margin-right: 0;
+}
+html[data-kp] .hermes-kanban-card-id {
+  font-family: var(--kp-mono);
+  font-size: 10.5px;
+  color: var(--kp-text-3);
+  letter-spacing: 0;
+  background: none;
+  padding: 0;
+}
+/* Tags / prioridade (Badge do SDK). */
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer) :is(.hermes-kanban-card-row, .hermes-kanban-drawer-meta, .hermes-kanban-section) > span.inline-flex,
+html[data-kp] .hermes-kanban-tag {
+  /* cor do tenant vem inline (hash do nome): mantém o matiz no texto, fundo neutro */
+  background-color: color-mix(in srgb, currentColor 7%, transparent) !important;
+  border-color: color-mix(in srgb, currentColor 22%, transparent) !important;
+  opacity: 1 !important;
+}
+html[data-kp] :is(.hermes-kanban, .hermes-kanban-drawer) :is(.hermes-kanban-card-row, .hermes-kanban-drawer-meta, .hermes-kanban-section) > span.inline-flex,
+html[data-kp] .hermes-kanban-tag {
+  font-family: var(--kp-font);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--kp-line-2);
+  background: color-mix(in srgb, var(--kp-ink) 4%, transparent);
+  color: var(--kp-text-2);
+}
+/* Prioridade: Badge cujo texto é P0..P9. Sem seletor de texto em CSS,
+   então vale para o primeiro badge quando há dois (P vem antes do tenant). */
+html[data-kp] .hermes-kanban-card-row > span.inline-flex:not(.hermes-kanban-tag) {
+  text-transform: uppercase;
+  font-family: var(--kp-mono);
+  font-weight: 600;
+  color: var(--kp-text);
+  background: color-mix(in srgb, var(--kp-ink) 9%, transparent);
+  border-color: transparent;
+}
+html[data-kp] .hermes-kanban-progress {
+  margin-left: auto;
+  font-family: var(--kp-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--kp-line-2);
+  background: transparent;
+  color: var(--kp-text-2);
+}
+html[data-kp] .hermes-kanban-progress--full {
+  color: var(--kp-c-running);
+  border-color: color-mix(in srgb, var(--kp-c-running) 35%, transparent);
+}
+html[data-kp] .hermes-kanban-warning-badge {
+  font-size: 11px;
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  color: var(--kp-c-ready);
+  background: color-mix(in srgb, var(--kp-c-ready) 12%, transparent);
+}
+html[data-kp] :is(.hermes-kanban-warning-badge--error, .hermes-kanban-warning-badge--critical) {
+  color: var(--kp-c-blocked);
+  background: color-mix(in srgb, var(--kp-c-blocked) 14%, transparent);
+}
+html[data-kp] .hermes-kanban-card-title {
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 1.38;
+  letter-spacing: -0.01em;
+  color: var(--kp-text);
+  text-transform: none;
+}
+html[data-kp] .hermes-kanban-card-meta {
+  font-size: 11.5px;
+  color: var(--kp-text-3);
+  gap: 10px;
+  margin-top: 1px;
+}
+html[data-kp] .hermes-kanban-ago { margin-left: auto; color: var(--kp-text-3); font-variant-numeric: tabular-nums; }
+html[data-kp] .hermes-kanban-count { color: var(--kp-text-3); font-variant-numeric: tabular-nums; }
+html[data-kp] .hermes-kanban-unassigned { font-style: normal; color: var(--kp-text-3); }
+html[data-kp] .hermes-kanban-unassigned::before {
+  content: "";
+  display: inline-block;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1px dashed var(--kp-line-3);
+  vertical-align: -4px;
+  margin-right: 6px;
+}
+
+/* Avatar de iniciais (data-kp-initials vem do index.js). */
+html[data-kp] .hermes-kanban-assignee {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--kp-text-2);
+  font-weight: 500;
+}
+html[data-kp] .hermes-kanban-lane-name[data-kp-initials]::before {
+  content: attr(data-kp-initials);
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--kp-text);
+  background: color-mix(in srgb, var(--kp-ink) 12%, var(--kp-base));
+  border: 1px solid var(--kp-line-2);
+  flex: none;
+}
+
+/* Estados do card. */
+html[data-kp] .hermes-kanban-card--selected > div {
+  border-color: color-mix(in srgb, var(--kp-ink) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kp-ink) 10%, transparent), var(--kp-shadow-1);
+}
+html[data-kp] .hermes-kanban-card--selected :where(.hermes-kanban-card-content) { box-shadow: none; background: none; }
+html[data-kp] .hermes-kanban-card--dragging-source { opacity: .4; }
+html[data-kp] .hermes-kanban-card--stale-amber :where(.hermes-kanban-card-content),
+html[data-kp] .hermes-kanban-card--stale-red :where(.hermes-kanban-card-content),
+html[data-kp] .hermes-kanban-card--failed :where(.hermes-kanban-card-content) { box-shadow: none; }
+html[data-kp] .hermes-kanban-card--stale-amber > div { border-color: color-mix(in srgb, var(--kp-c-ready) 40%, transparent); }
+html[data-kp] .hermes-kanban-card--stale-red > div,
+html[data-kp] .hermes-kanban-card--failed > div { border-color: color-mix(in srgb, var(--kp-c-blocked) 45%, transparent); }
+
+html[data-kp] .hermes-kanban-drag-ghost {
+  border-radius: var(--kp-r);
+  box-shadow: var(--kp-shadow-3);
+  transform: rotate(1.5deg);
+}
+
+/* ---------------------------------------------------- bulk bar / lixeira */
+
+html[data-kp] .hermes-kanban-bulk {
+  border-radius: 12px;
+  border: 1px solid var(--kp-line-2);
+  background: color-mix(in srgb, var(--kp-raise) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--kp-shadow-3);
+  padding: 8px 10px;
+  gap: 8px;
+}
+html[data-kp] .hermes-kanban-bulk > button[data-kp-btn],
+html[data-kp] .hermes-kanban-bulk-reassign > button[data-kp-btn] {
+  height: 30px !important;
+  padding: 0 11px !important;
+  font-size: 12px !important;
+}
+html[data-kp] .hermes-kanban-bulk :is(input, div.relative > button.justify-between) { height: 30px; }
+html[data-kp] .hermes-kanban-bulk-reassign { border-left-color: var(--kp-line-2); }
+html[data-kp] .hermes-kanban-bulk-count { font-weight: 600; color: var(--kp-text); font-size: 12.5px; }
+html[data-kp] .hermes-kanban-trash {
+  border-radius: var(--kp-r-lg);
+  border: 1px dashed color-mix(in srgb, var(--kp-c-blocked) 40%, transparent);
+  background: color-mix(in srgb, var(--kp-c-blocked) 5%, var(--kp-panel));
+  color: var(--kp-c-blocked);
+}
+html[data-kp] .hermes-kanban-trash--drop {
+  background: color-mix(in srgb, var(--kp-c-blocked) 14%, var(--kp-panel));
+  border-style: solid;
+}
+
+/* ------------------------------------------------------------------ drawer */
+
+html[data-kp] .hermes-kanban-drawer-shade {
+  background: rgba(0, 0, 0, .5);
+  backdrop-filter: blur(2px);
+}
+html[data-kp] .hermes-kanban-drawer {
+  width: min(var(--hermes-kanban-drawer-width, 680px), 94vw);
+  background: var(--kp-panel);
+  border-left: 1px solid var(--kp-line-2);
+  box-shadow: -24px 0 64px -12px rgba(0, 0, 0, .6);
+  animation: kp-drawer-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes kp-drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+html[data-kp] .hermes-kanban-drawer-head {
+  height: 48px;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--kp-line);
+  background: var(--kp-panel);
+}
+html[data-kp] .hermes-kanban-drawer-head > span {
+  font-family: var(--kp-mono);
+  font-size: 11.5px;
+  color: var(--kp-text-3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--kp-card);
+  border: 1px solid var(--kp-line);
+}
+html[data-kp] .hermes-kanban-drawer-close {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  color: var(--kp-text-2);
+  font-size: 18px;
+}
+html[data-kp] .hermes-kanban-drawer-close:hover { background: var(--kp-card-h); color: var(--kp-text); }
+
+html[data-kp] .hermes-kanban-drawer-body { padding: 22px 22px 28px; gap: 18px; }
+html[data-kp] .hermes-kanban-drawer-body > * { flex-shrink: 0; }
+html[data-kp] .hermes-kanban-drawer-title { gap: 10px; align-items: center; }
+html[data-kp] .hermes-kanban-drawer-title .hermes-kanban-dot { width: 10px; height: 10px; }
+html[data-kp] .hermes-kanban-drawer-title-text {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-transform: none;
+  color: var(--kp-text);
+}
+
+/* Metadados em grade de 2 colunas. */
+html[data-kp] .hermes-kanban-drawer-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r);
+  background: var(--kp-col);
+  overflow: hidden;
+}
+html[data-kp] .hermes-kanban-meta-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--kp-line);
+  font-size: 12.5px;
+  min-height: 38px;
+}
+html[data-kp] .hermes-kanban-meta-row:nth-child(odd) { border-right: 1px solid var(--kp-line); }
+html[data-kp] .hermes-kanban-meta-label { color: var(--kp-text-3); font-size: 12px; text-transform: none; letter-spacing: 0; }
+html[data-kp] .hermes-kanban-meta-value { color: var(--kp-text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+html[data-kp] .hermes-kanban-editable { border-radius: 6px; padding: 2px 6px; margin: -2px -6px; }
+html[data-kp] .hermes-kanban-editable:hover { background: var(--kp-card-h); }
+
+html[data-kp] .hermes-kanban-actions { gap: 6px; flex-wrap: wrap; }
+
+html[data-kp] .hermes-kanban-section {
+  border-top: 1px solid var(--kp-line);
+  padding-top: 16px;
+  gap: 10px;
+}
+html[data-kp] :is(.hermes-kanban-section-head, .hermes-kanban-section-toggle) {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kp-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+html[data-kp] .hermes-kanban-section-head-warning { color: var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-edit-link {
+  font-size: 12px;
+  color: var(--kp-text-3);
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+}
+html[data-kp] .hermes-kanban-edit-link:hover { color: var(--kp-text); border-color: var(--kp-line-2); background: var(--kp-card); }
+
+/* Markdown da descrição. */
+html[data-kp] .hermes-kanban-md { font-size: 13.5px; line-height: 1.65; color: color-mix(in srgb, var(--kp-ink) 82%, transparent); }
+html[data-kp] .hermes-kanban-md :is(h1, h2, h3, h4) {
+  color: var(--kp-text);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 14px 0 6px;
+  text-transform: none;
+}
+html[data-kp] .hermes-kanban-md h1 { font-size: 17px; }
+html[data-kp] .hermes-kanban-md h2 { font-size: 15px; }
+html[data-kp] .hermes-kanban-md h3 { font-size: 14px; }
+html[data-kp] .hermes-kanban-md :is(ul, ol) { padding-left: 20px; margin: 6px 0; }
+html[data-kp] .hermes-kanban-md ul { list-style: disc; }
+html[data-kp] .hermes-kanban-md ol { list-style: decimal; }
+html[data-kp] .hermes-kanban-md li::marker { color: var(--kp-text-3); }
+html[data-kp] .hermes-kanban-md a { color: var(--kp-text); text-decoration: underline; text-decoration-color: var(--kp-line-3); text-underline-offset: 3px; }
+html[data-kp] .hermes-kanban .hermes-kanban-md code:not(.hermes-kanban-md-code *),
+html[data-kp] .hermes-kanban-drawer .hermes-kanban-md code:not(.hermes-kanban-md-code *) {
+  font-family: var(--kp-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--kp-line);
+}
+html[data-kp] :is(.hermes-kanban-md-code, .hermes-kanban-pre, .hermes-kanban-log) {
+  font-family: var(--kp-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: var(--kp-r);
+  border: 1px solid var(--kp-line);
+  background: color-mix(in srgb, var(--kp-base) 70%, #000) !important;
+  padding: 12px 14px;
+  color: var(--kp-text);
+}
+
+/* Dependências. */
+html[data-kp] .hermes-kanban-deps-row { gap: 8px; align-items: center; }
+html[data-kp] .hermes-kanban-deps-label { font-size: 12px; color: var(--kp-text-3); min-width: 64px; }
+html[data-kp] .hermes-kanban-deps-empty { font-size: 12px; color: var(--kp-text-3); font-style: normal; }
+html[data-kp] .hermes-kanban-dep-chip {
+  font-family: var(--kp-mono);
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-card);
+  color: var(--kp-text-2);
+  padding: 2px 4px 2px 9px;
+  gap: 4px;
+}
+html[data-kp] .hermes-kanban-dep-chip:hover { border-color: var(--kp-line-3); color: var(--kp-text); }
+html[data-kp] .hermes-kanban-dep-chip-x { border-radius: 50%; width: 16px; height: 16px; color: var(--kp-text-3); }
+html[data-kp] .hermes-kanban-dep-chip-x:hover { background: color-mix(in srgb, var(--kp-c-blocked) 18%, transparent); color: var(--kp-c-blocked); }
+
+/* Comentários. */
+html[data-kp] .hermes-kanban-comment {
+  border: 1px solid var(--kp-line);
+  border-radius: var(--kp-r);
+  background: var(--kp-card);
+  padding: 10px 12px;
+}
+html[data-kp] .hermes-kanban-comment-head { gap: 8px; font-size: 12px; margin-bottom: 4px; }
+html[data-kp] .hermes-kanban-comment-author { color: var(--kp-text); font-weight: 600; }
+html[data-kp] .hermes-kanban-comment-ago { color: var(--kp-text-3); }
+
+/* Eventos (timeline). */
+html[data-kp] .hermes-kanban-event {
+  position: relative;
+  padding: 6px 0 6px 18px;
+  border: 0;
+  font-size: 12.5px;
+}
+html[data-kp] .hermes-kanban-event::before {
+  content: "";
+  position: absolute; left: 4px; top: 0; bottom: 0;
+  width: 1px; background: var(--kp-line-2);
+}
+html[data-kp] .hermes-kanban-event::after {
+  content: "";
+  position: absolute; left: 1px; top: 13px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--kp-panel);
+  border: 1.5px solid var(--kp-line-3);
+}
+html[data-kp] .hermes-kanban-event-kind { font-family: var(--kp-font); font-weight: 600; color: var(--kp-text); text-transform: none; letter-spacing: 0; }
+html[data-kp] .hermes-kanban-event-payload { font-family: var(--kp-mono); font-size: 11.5px; }
+html[data-kp] .hermes-kanban-event--hallucination::after { border-color: var(--kp-c-blocked); }
+
+/* Execuções. */
+html[data-kp] .hermes-kanban-run {
+  border: 1px solid var(--kp-line);
+  border-left-width: 1px;
+  border-radius: var(--kp-r);
+  background: var(--kp-card);
+  padding: 10px 12px;
+  box-shadow: inset 2px 0 0 0 var(--kp-line-3);
+}
+html[data-kp] .hermes-kanban-run--active    { box-shadow: inset 2px 0 0 0 var(--kp-c-running); }
+html[data-kp] .hermes-kanban-run--completed { box-shadow: inset 2px 0 0 0 var(--kp-c-done); }
+html[data-kp] :is(.hermes-kanban-run--crashed, .hermes-kanban-run--gave_up, .hermes-kanban-run--spawn_failed, .hermes-kanban-run--timed_out) { box-shadow: inset 2px 0 0 0 var(--kp-c-blocked); }
+html[data-kp] :is(.hermes-kanban-run--blocked, .hermes-kanban-run--reclaimed) { box-shadow: inset 2px 0 0 0 var(--kp-c-ready); }
+html[data-kp] .hermes-kanban-run-head { gap: 8px; font-size: 12.5px; align-items: center; }
+html[data-kp] .hermes-kanban-run-outcome { font-weight: 600; text-transform: lowercase; letter-spacing: 0; font-size: 11.5px; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--kp-ink) 7%, transparent); }
+html[data-kp] :is(.hermes-kanban-run-profile, .hermes-kanban-run-elapsed, .hermes-kanban-run-ago) { color: var(--kp-text-2); font-size: 12px; }
+html[data-kp] .hermes-kanban-run-summary { color: var(--kp-text); font-size: 12.5px; margin-top: 6px; line-height: 1.5; }
+html[data-kp] .hermes-kanban-run-error { color: var(--kp-c-blocked); font-family: var(--kp-mono); font-size: 11.5px; }
+html[data-kp] .hermes-kanban-run-meta-label { color: var(--kp-text-3); }
+
+/* Rodapé de comentário. */
+html[data-kp] .hermes-kanban-drawer-comment-foot {
+  border-top: 1px solid var(--kp-line);
+  background: var(--kp-panel);
+  padding: 12px 16px 14px;
+  gap: 8px;
+}
+html[data-kp] .hermes-kanban-comment-hint { color: var(--kp-text-3); font-size: 11.5px; }
+html[data-kp] .hermes-kanban-drawer-comment-row { gap: 8px; }
+html[data-kp] .hermes-kanban-drawer-comment-row input { height: 36px; }
+html[data-kp] .hermes-kanban-drawer-comment-row button[data-kp-btn] { height: 36px; }
+
+html[data-kp] .hermes-kanban-msg-ok  { color: var(--kp-c-running); font-size: 12.5px; }
+html[data-kp] .hermes-kanban-msg-err { color: var(--kp-c-blocked); font-size: 12.5px; }
+
+/* Canais / home subs. */
+html[data-kp] .hermes-kanban-home-subs { gap: 6px; }
+
+/* --------------------------------------------------- diagnostics / recovery */
+
+html[data-kp] :is(.hermes-kanban-diag, .hermes-kanban-recovery) {
+  border-radius: var(--kp-r);
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-card);
+}
+html[data-kp] .hermes-kanban-diag--warning  { border-color: color-mix(in srgb, var(--kp-c-ready) 32%, transparent); }
+html[data-kp] :is(.hermes-kanban-diag--error, .hermes-kanban-diag--critical) { border-color: color-mix(in srgb, var(--kp-c-blocked) 38%, transparent); }
+html[data-kp] .hermes-kanban-diag-title { font-weight: 600; color: var(--kp-text); }
+html[data-kp] .hermes-kanban-diag-detail { color: var(--kp-text-2); font-size: 12.5px; }
+html[data-kp] :is(.hermes-kanban-diag-action-btn, .hermes-kanban-recovery-btn) {
+  border-radius: 7px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-raise);
+  color: var(--kp-text);
+  font-size: 12px;
+  padding: 4px 10px;
+}
+html[data-kp] .hermes-kanban-diag-action-btn--suggested { background: var(--kp-ink); color: var(--kp-base); border-color: var(--kp-ink); }
+html[data-kp] :is(.hermes-kanban-recovery-cmd, .hermes-kanban-diag-data) { font-family: var(--kp-mono); font-size: 11.5px; border-radius: 7px; }
+
+/* ------------------------------------------------------------------ dialogs */
+
+html[data-kp] .hermes-kanban-dialog-backdrop {
+  background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(3px);
+}
+html[data-kp] .hermes-kanban-dialog {
+  border-radius: 16px;
+  border: 1px solid var(--kp-line-2);
+  background: var(--kp-panel);
+  box-shadow: var(--kp-shadow-3);
+  padding: 20px 22px;
+}
+html[data-kp] .hermes-kanban-dialog-title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: var(--kp-text);
+}
+html[data-kp] .hermes-kanban-dialog-actions {
+  gap: 8px;
+  border-top: 1px solid var(--kp-line);
+  margin: 16px -22px -20px;
+  padding: 12px 22px;
+  background: var(--kp-col);
+  border-radius: 0 0 16px 16px;
+}
+
+/* Criação inline dentro da coluna. */
+html[data-kp] .hermes-kanban-column-body > form,
+html[data-kp] .hermes-kanban-create-dialog {
+  border-radius: var(--kp-r);
+}
+
+/* Scrollbars discretas. */
+html[data-kp] :is(.hermes-kanban-columns, .hermes-kanban-column-body, .hermes-kanban-drawer-body)::-webkit-scrollbar { width: 8px; height: 8px; }
+html[data-kp] :is(.hermes-kanban-columns, .hermes-kanban-column-body, .hermes-kanban-drawer-body)::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-midground, #fff) 12%, transparent);
+  border-radius: 8px;
+}
+html[data-kp] :is(.hermes-kanban-columns, .hermes-kanban-column-body, .hermes-kanban-drawer-body)::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-kp] .hermes-kanban-dot-running { animation: none; }
+  html[data-kp] .hermes-kanban-card, html[data-kp] .hermes-kanban-drawer { transition: none; animation: none; }
+}
+
+
+/* =====================================================================
+ * v1.1 — chip de profile/modelo no card + painel do agente no drawer
+ * ===================================================================== */
+
+/* Chip: ícone do provedor + @profile + modelo (ícone via --kp-icon, texto via attr). */
+html[data-kp] .hermes-kanban-card .hermes-kanban-assignee[data-kp-provider] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px 2px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--kp-line);
+  background: color-mix(in srgb, var(--kp-ink) 3.5%, transparent);
+  color: var(--kp-text);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+html[data-kp] .hermes-kanban-card .hermes-kanban-assignee[data-kp-provider]::before {
+  content: "";
+  width: 16px; height: 16px; flex: none;
+  border-radius: 5px;
+  border: 0;
+  background: var(--kp-icon, color-mix(in srgb, var(--kp-ink) 12%, var(--kp-base))) center / cover no-repeat;
+}
+html[data-kp] .hermes-kanban-card .hermes-kanban-assignee[data-kp-provider="none"]::before {
+  background: color-mix(in srgb, var(--kp-ink) 12%, var(--kp-base));
+}
+html[data-kp] .hermes-kanban-card .hermes-kanban-assignee[data-kp-model]:not([data-kp-model=""])::after {
+  content: attr(data-kp-model);
+  font-family: var(--kp-mono);
+  font-size: 10.5px;
+  color: var(--kp-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* chip do agente ocupa a linha inteira; contadores e tempo vão para a linha de baixo */
+html[data-kp] .hermes-kanban-card .hermes-kanban-card-meta { flex-wrap: wrap; row-gap: 7px; min-width: 0; }
+html[data-kp] .hermes-kanban-card .hermes-kanban-card-meta > .hermes-kanban-assignee[data-kp-provider] {
+  flex: 1 1 100%;
+  max-width: 100%;
+  border-radius: 7px;
+  padding: 3px 8px 3px 3px;
+}
+html[data-kp] .hermes-kanban-card .hermes-kanban-assignee[data-kp-model]:not([data-kp-model=""])::after { margin-left: auto; padding-left: 8px; }
+
+/* Rodando: anel pulsando no ícone e borda viva no chip. */
+html[data-kp] .hermes-kanban-card[data-kp-live="1"] .hermes-kanban-assignee[data-kp-provider] {
+  border-color: color-mix(in srgb, var(--kp-c-running) 45%, transparent);
+  background: color-mix(in srgb, var(--kp-c-running) 8%, transparent);
+}
+html[data-kp] .hermes-kanban-card[data-kp-live="1"] .hermes-kanban-assignee[data-kp-provider]::before {
+  animation: kp-ring 1.8s ease-in-out infinite;
+}
+@keyframes kp-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kp-c-running) 55%, transparent); }
+  50%      { box-shadow: 0 0 0 3px color-mix(in srgb, var(--kp-c-running) 0%, transparent); }
+}
+
+/* ---- Painel do agente ---------------------------------------------- */
+
+html[data-kp] .kp-agent {
+  flex-shrink: 0;
+  border: 1px solid var(--kp-line-2);
+  border-radius: var(--kp-r-lg);
+  background: var(--kp-col);
+  box-shadow: var(--kp-shadow-1);
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--kp-text);
+}
+html[data-kp] .kp-ico { display: inline-flex; flex: none; border-radius: 6px; overflow: hidden; }
+html[data-kp] .kp-ico svg { width: 100%; height: 100%; display: block; }
+
+html[data-kp] .kp-loading,
+html[data-kp] .kp-empty {
+  padding: 22px 16px;
+  color: var(--kp-text-3);
+  font-size: 12.5px;
+  text-align: center;
+}
+html[data-kp] .kp-summary { text-align: left; margin-top: 12px; color: var(--kp-text-2); }
+
+html[data-kp] .kp-agent-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 14px 12px;
+}
+html[data-kp] .kp-agent-avatar { position: relative; border-radius: 9px; flex: none; }
+html[data-kp] .kp-agent-avatar .kp-ico { border-radius: 9px; }
+html[data-kp] .kp-agent-avatar.is-live::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--kp-c-running) 70%, transparent);
+  animation: kp-halo 1.8s ease-in-out infinite;
+}
+@keyframes kp-halo { 0%, 100% { opacity: .9; } 50% { opacity: .25; } }
+html[data-kp] .kp-agent-id { min-width: 0; flex: 1; }
+html[data-kp] .kp-agent-model {
+  font-family: var(--kp-mono); font-size: 13.5px; font-weight: 600; color: var(--kp-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+html[data-kp] .kp-agent-sub { font-size: 12px; color: var(--kp-text-3); margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; }
+html[data-kp] .kp-agent-profile { color: var(--kp-text-2); font-weight: 600; }
+html[data-kp] .kp-sep { opacity: .6; }
+html[data-kp] .kp-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500;
+  border: 1px solid var(--kp-line-2); color: var(--kp-text-2); white-space: nowrap;
+}
+html[data-kp] .kp-state--live { color: var(--kp-c-running); border-color: color-mix(in srgb, var(--kp-c-running) 40%, transparent); background: color-mix(in srgb, var(--kp-c-running) 8%, transparent); }
+html[data-kp] .kp-state--live i { width: 6px; height: 6px; border-radius: 50%; background: var(--kp-c-running); animation: kp-pulse 1.6s ease-in-out infinite; }
+html[data-kp] .kp-state--bad { color: var(--kp-c-blocked); border-color: color-mix(in srgb, var(--kp-c-blocked) 40%, transparent); }
+
+html[data-kp] .kp-stats {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid var(--kp-line); border-bottom: 1px solid var(--kp-line);
+  background: var(--kp-panel);
+}
+html[data-kp] .kp-stat { padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+html[data-kp] .kp-stat + .kp-stat { border-left: 1px solid var(--kp-line); }
+html[data-kp] .kp-stat span { font-size: 10.5px; color: var(--kp-text-3); }
+html[data-kp] .kp-stat b { font-family: var(--kp-mono); font-size: 12.5px; font-weight: 600; color: var(--kp-text); font-variant-numeric: tabular-nums; }
+
+html[data-kp] .kp-tabs { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--kp-line); }
+html[data-kp] .kp-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 28px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--kp-text-2); font-size: 12.5px; font-weight: 500; cursor: pointer;
+}
+html[data-kp] .kp-tab:hover { color: var(--kp-text); background: var(--kp-card); }
+html[data-kp] .kp-tab.is-on { color: var(--kp-text); background: var(--kp-card-h); border-color: var(--kp-line-2); }
+html[data-kp] .kp-tab-n {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; background: color-mix(in srgb, var(--kp-ink) 8%, transparent); color: var(--kp-text-2);
+}
+html[data-kp] .kp-tabs-fill { flex: 1; }
+html[data-kp] .kp-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--kp-text-3); cursor: pointer; }
+html[data-kp] .kp-toggle input { accent-color: var(--kp-ink); }
+html[data-kp] .kp-agent select.kp-run-select {
+  height: 28px; border-radius: 7px; border: 1px solid var(--kp-line-2);
+  background: var(--kp-panel); color: var(--kp-text); font-size: 12px; padding: 0 8px; margin-left: 6px;
+}
+
+html[data-kp] .kp-pane {
+  max-height: min(56vh, 620px);
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--kp-line-2) transparent;
+}
+
+/* Mensagens */
+html[data-kp] .kp-msg { display: flex; gap: 10px; align-items: flex-start; }
+html[data-kp] .kp-msg-ico { padding-top: 2px; }
+html[data-kp] .kp-msg-body {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--kp-line); border-radius: 4px var(--kp-r) var(--kp-r) var(--kp-r);
+  background: var(--kp-card); padding: 9px 12px;
+}
+html[data-kp] .kp-msg.is-final .kp-msg-body { border-color: color-mix(in srgb, var(--kp-ink) 22%, transparent); background: var(--kp-card-h); }
+html[data-kp] .kp-msg-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--kp-text-3); margin-bottom: 4px; }
+html[data-kp] .kp-msg-meta b { color: var(--kp-text); font-weight: 600; }
+html[data-kp] .kp-msg-meta span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
+html[data-kp] .kp-pill {
+  font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+  color: var(--kp-c-running); background: color-mix(in srgb, var(--kp-c-running) 10%, transparent);
+}
+html[data-kp] .kp-md { font-size: 13px; line-height: 1.6; color: color-mix(in srgb, var(--kp-ink) 86%, transparent); overflow-wrap: anywhere; }
+html[data-kp] .kp-md p { margin: 0 0 6px; }
+html[data-kp] .kp-md p:last-child { margin-bottom: 0; }
+html[data-kp] .kp-md :is(h3, h4, h5, h6) { font-size: 13.5px; font-weight: 650; color: var(--kp-text); margin: 10px 0 4px; }
+html[data-kp] .kp-md ul, html[data-kp] .kp-md ol { margin: 4px 0 6px; padding-left: 20px; }
+html[data-kp] .kp-md ul { list-style: disc; } html[data-kp] .kp-md ol { list-style: decimal; }
+html[data-kp] .kp-md code { font-family: var(--kp-mono); font-size: 11.5px; padding: 1px 5px; border-radius: 5px; border: 1px solid var(--kp-line); background: color-mix(in srgb, var(--kp-ink) 5%, transparent) !important; }
+html[data-kp] .kp-agent .kp-code {
+  font-family: var(--kp-mono); font-size: 11.5px; line-height: 1.55;
+  margin: 6px 0; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--kp-line); background: color-mix(in srgb, var(--kp-base) 70%, #000) !important;
+  color: var(--kp-text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto;
+}
+
+/* Ferramentas (agrupadas entre mensagens) */
+html[data-kp] .kp-tools {
+  margin-left: 30px;
+  border-left: 1px solid var(--kp-line-2);
+  padding-left: 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+html[data-kp] .kp-tool > summary,
+html[data-kp] .kp-prompt > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; color: var(--kp-text-2);
+}
+html[data-kp] .kp-tool > summary::-webkit-details-marker,
+html[data-kp] .kp-prompt > summary::-webkit-details-marker { display: none; }
+html[data-kp] .kp-tool > summary:hover, html[data-kp] .kp-prompt > summary:hover { background: var(--kp-card); color: var(--kp-text); }
+html[data-kp] .kp-tool-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--kp-c-running); opacity: .8; }
+html[data-kp] .kp-tool.is-err .kp-tool-dot { background: var(--kp-c-blocked); }
+html[data-kp] .kp-tool-name { font-family: var(--kp-mono); font-size: 11.5px; font-weight: 600; color: var(--kp-text); flex: none; }
+html[data-kp] .kp-tool-label { font-family: var(--kp-mono); font-size: 11px; color: var(--kp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+html[data-kp] .kp-tool-time { margin-left: auto; font-size: 10.5px; color: var(--kp-text-3); flex: none; font-variant-numeric: tabular-nums; }
+html[data-kp] .kp-tool .kp-code { margin: 4px 0 8px 14px; }
+html[data-kp] .kp-muted { font-size: 11.5px; color: var(--kp-text-3); padding: 2px 0 6px 22px; }
+html[data-kp] .kp-prompt { border: 1px dashed var(--kp-line-2); border-radius: var(--kp-r); }
+html[data-kp] .kp-prompt > summary { padding: 8px 10px; font-weight: 500; }
+html[data-kp] .kp-prompt[open] > .kp-md { padding: 0 12px 10px; max-height: 320px; overflow: auto; font-size: 12.5px; }
+
+html[data-kp] .kp-typing { display: flex; align-items: center; gap: 4px; padding: 4px 0 0 30px; color: var(--kp-text-3); font-size: 12px; }
+html[data-kp] .kp-typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--kp-text-2); animation: kp-dots 1.2s infinite ease-in-out; }
+html[data-kp] .kp-typing i:nth-child(2) { animation-delay: .15s; } html[data-kp] .kp-typing i:nth-child(3) { animation-delay: .3s; }
+html[data-kp] .kp-typing span { margin-left: 6px; }
+@keyframes kp-dots { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+
+/* Arquivos */
+html[data-kp] .kp-files-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--kp-text-3);
+  margin-top: 4px;
+}
+html[data-kp] .kp-files-head span { font-family: var(--kp-mono); letter-spacing: 0; }
+html[data-kp] .kp-file {
+  display: grid; grid-template-columns: 38px minmax(0, 1fr) auto auto 26px; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--kp-line); border-radius: var(--kp-r); background: var(--kp-card);
+}
+html[data-kp] .kp-file:hover { border-color: var(--kp-line-2); background: var(--kp-card-h); }
+html[data-kp] .kp-file.is-gone { opacity: .55; }
+html[data-kp] .kp-file-ext {
+  height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--kp-mono); font-size: 10px; font-weight: 600; text-transform: uppercase;
+  color: var(--kp-text-2); background: color-mix(in srgb, var(--kp-ink) 7%, transparent); border: 1px solid var(--kp-line);
+}
+html[data-kp] .kp-file-main { min-width: 0; }
+html[data-kp] .kp-file-name { font-size: 13px; font-weight: 550; color: var(--kp-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-kp] .kp-file-dir { font-family: var(--kp-mono); font-size: 10.5px; color: var(--kp-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-kp] .kp-file-tags { display: flex; gap: 4px; }
+html[data-kp] .kp-tag {
+  font-size: 10.5px; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--kp-line-2); color: var(--kp-text-2);
+}
+html[data-kp] .kp-tag--criado, html[data-kp] .kp-tag--escrita { color: var(--kp-c-running); border-color: color-mix(in srgb, var(--kp-c-running) 35%, transparent); }
+html[data-kp] .kp-tag--patch, html[data-kp] .kp-tag--editado { color: var(--kp-c-ready); border-color: color-mix(in srgb, var(--kp-c-ready) 35%, transparent); }
+html[data-kp] .kp-tag--removido { color: var(--kp-c-blocked); border-color: color-mix(in srgb, var(--kp-c-blocked) 35%, transparent); }
+html[data-kp] .kp-tag--artefato { color: var(--kp-c-done); border-color: color-mix(in srgb, var(--kp-c-done) 35%, transparent); }
+html[data-kp] .kp-file-size { font-family: var(--kp-mono); font-size: 11px; color: var(--kp-text-3); white-space: nowrap; }
+html[data-kp] .kp-copy {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent; background: transparent;
+  color: var(--kp-text-3); cursor: pointer; font-size: 13px;
+}
+html[data-kp] .kp-copy:hover { color: var(--kp-text); border-color: var(--kp-line-2); background: var(--kp-panel); }
+
+@media (max-width: 720px) {
+  html[data-kp] .kp-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html[data-kp] .kp-stat:nth-child(4) { border-left: 0; }
+  html[data-kp] .kp-file { grid-template-columns: 34px minmax(0, 1fr) 26px; }
+  html[data-kp] .kp-file-tags, html[data-kp] .kp-file-size { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-kp] .kp-agent *, html[data-kp] .hermes-kanban-card * { animation: none !important; }
+}
+
+html[data-kp] .kp-table { overflow-x: auto; margin: 6px 0 8px; border: 1px solid var(--kp-line); border-radius: 8px; }
+html[data-kp] .kp-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+html[data-kp] .kp-table :is(th, td) { padding: 6px 9px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--kp-line); }
+html[data-kp] .kp-table tr:last-child td { border-bottom: 0; }
+html[data-kp] .kp-table th { font-weight: 600; color: var(--kp-text); background: var(--kp-panel); white-space: nowrap; }
+html[data-kp] .kp-table td + td, html[data-kp] .kp-table th + th { border-left: 1px solid var(--kp-line); }
