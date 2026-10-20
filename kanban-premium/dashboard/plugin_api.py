@@ -32,7 +32,8 @@ router = APIRouter()
 
 _ID_RE = re.compile(r"^t_[0-9a-f]{4,32}$")
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-_SESSION_LINE = re.compile(r"^\s*Session:\s*(\S+)", re.M)
+_SESSION_LINE = re.compile(r"^\s*Session:[ \t]*(\S+)", re.M)
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r(?!\n)")
 
 _MAX_TEXT = 6000        # por mensagem do assistente
 _MAX_TOOL_OUT = 1200    # prévia do retorno de ferramenta
@@ -140,18 +141,85 @@ def _run_meta(raw: Optional[str]) -> dict:
         return {}
 
 
-def _log_session(slug: str, task_id: str) -> Optional[str]:
+def _log_path(slug: str, task_id: str) -> Optional[Path]:
     try:
         from hermes_cli import kanban_db
         p = kanban_db.worker_log_path(task_id, board=slug)
-        if not p.exists():
-            return None
-        with open(p, "rb") as f:
-            head = f.read(600).decode("utf-8", "replace")
-        m = _SESSION_LINE.search(head)
-        return m.group(1) if m else None
+        return p if p.exists() else None
     except Exception:
         return None
+
+
+def _log_sessions(slug: str, task_id: str) -> list[str]:
+    """Todos os ids de sessão citados no log do worker, na ordem em que aparecem.
+
+    O runtime padrão escreve ``Session: <id>`` na 1ª linha; o runtime codex escreve
+    no fim, alinhado com espaços. O log é anexado entre tentativas, então pode ter vários."""
+    p = _log_path(slug, task_id)
+    if not p:
+        return []
+    try:
+        size = p.stat().st_size
+        with open(p, "rb") as f:
+            if size > 600_000:
+                head = f.read(200_000)
+                f.seek(size - 200_000)
+                data = head + b"\n" + f.read()
+            else:
+                data = f.read()
+        out = []
+        for m in _SESSION_LINE.finditer(data.decode("utf-8", "replace")):
+            sid = m.group(1).strip()
+            if sid and sid not in out:
+                out.append(sid)
+        return out
+    except Exception:
+        return []
+
+
+def _log_tail(slug: str, task_id: str, nbytes: int = 6000) -> str:
+    p = _log_path(slug, task_id)
+    if not p:
+        return ""
+    try:
+        size = p.stat().st_size
+        with open(p, "rb") as f:
+            f.seek(max(0, size - nbytes))
+            txt = f.read().decode("utf-8", "replace")
+        if size > nbytes:
+            txt = txt.split("\n", 1)[-1]
+        return _redact(_ANSI.sub("", txt))
+    except Exception:
+        return ""
+
+
+def _session_by_task(profile: Optional[str], task_id: str, run: Optional[dict]) -> Optional[str]:
+    """Procura no state.db do profile a sessão de worker deste card.
+
+    Não depende do formato do log: o prompt do worker sempre cita o id do card
+    (``# Kanban task t_xxx`` ou ``work kanban task t_xxx``). Com run, escolhe a sessão
+    que começou dentro da janela do run; sem janela compatível, a mais próxima."""
+    db = _state_db(profile)
+    if not db:
+        return None
+    like = f"%{task_id}%"
+    try:
+        with closing(_ro(db)) as c:
+            rows = c.execute(
+                "SELECT s.id, s.started_at FROM sessions s WHERE s.source='kanban' AND ("
+                " s.title LIKE ? OR EXISTS (SELECT 1 FROM messages m WHERE m.session_id=s.id"
+                " AND m.role='user' AND m.content LIKE ?)) ORDER BY s.started_at", (like, like)).fetchall()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    if not run or not run.get("started_at"):
+        return rows[-1]["id"]
+    start = float(run["started_at"])
+    end = float(run.get("ended_at") or time.time())
+    inside = [r for r in rows if start - 120 <= (r["started_at"] or 0) <= end + 120]
+    pool = inside or rows
+    return min(pool, key=lambda r: abs((r["started_at"] or 0) - start))["id"]
 
 
 def _runs(conn: sqlite3.Connection, task_id: str) -> list[dict]:
@@ -161,15 +229,33 @@ def _runs(conn: sqlite3.Connection, task_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _session_exists(profile: Optional[str], sid: Optional[str]) -> bool:
+    db = _state_db(profile)
+    if not db or not sid:
+        return False
+    try:
+        with closing(_ro(db)) as c:
+            return c.execute("SELECT 1 FROM sessions WHERE id=?", (sid,)).fetchone() is not None
+    except Exception:
+        return False
+
+
 def _session_id_for(slug: str, task: sqlite3.Row, run: Optional[dict], is_latest: bool) -> Optional[str]:
+    """Ordem: metadata do complete > busca pelo id do card no state.db > log do worker."""
+    profile = (run or {}).get("profile") or task["assignee"]
     if run:
         sid = _run_meta(run.get("metadata")).get("worker_session_id")
-        if sid:
+        if sid and _session_exists(profile, str(sid)):
             return str(sid)
+    sid = _session_by_task(profile, task["id"], run)
+    if sid:
+        return sid
     if is_latest:
-        if task["session_id"]:
+        if task["session_id"] and _session_exists(profile, task["session_id"]):
             return str(task["session_id"])
-        return _log_session(slug, task["id"])
+        for sid in reversed(_log_sessions(slug, task["id"])):
+            if _session_exists(profile, sid):
+                return sid
     return None
 
 
@@ -384,6 +470,7 @@ def activity(task_id: str, board: Optional[str] = Query(None), run: Optional[int
         for r in rows:
             if r["role"] == "tool" and r["tool_call_id"]:
                 results[r["tool_call_id"]] = dict(r)
+        session_live = bool(chosen and chosen.get("ended_at") is None and task["status"] == "running")
         for r in rows:
             last_id = max(last_id, r["id"])
             ts = r["timestamp"]
@@ -407,15 +494,28 @@ def activity(task_id: str, board: Optional[str] = Query(None), run: Optional[int
                         args = {}
                     if not isinstance(args, dict):
                         args = {}
-                    res = results.get(tc.get("id") or "")
+                    tc = tc or {}
+                    res = None
+                    for key in (tc.get("id"), tc.get("call_id"), tc.get("tool_call_id")):
+                        if key and key in results:
+                            res = results[key]
+                            break
+                    pending = res is None
                     out, ok = _tool_output((res or {}).get("content") or "")
                     if name in _FILE_TOOLS and ok:
                         for pth in (_patch_paths(args) if name != "write_file" else [args.get("path") or ""]):
                             if pth:
                                 _file_entry(files, _norm_path(pth, cwd), "patch" if name == "patch" else "escrita", ts, "ferramenta")
-                    if r["id"] > after:
-                        items.append({"id": f"{r['id']}.{n}", "kind": "tool", "name": name, "ts": ts, "ok": ok,
+                    # reenvia a chamada quando o resultado chega depois do cursor
+                    if r["id"] > after or (res and res["id"] > after) or pending:
+                        cmd = args.get("command") if name == "terminal" else None
+                        items.append({"id": f"{r['id']}.{n}", "kind": "tool", "name": name, "ts": ts,
+                                      "ok": ok and not (pending and not session_live),
+                                      "pending": pending and session_live,
+                                      "lost": pending and not session_live,
+                                      "done_ts": (res or {}).get("timestamp"),
                                       "label": _redact(_tool_label(name, args)),
+                                      "command": _redact(_clip(cmd, 4000)) if isinstance(cmd, str) else None,
                                       "output": _redact(_clip(out, _MAX_TOOL_OUT))})
             elif r["role"] == "user" and r["id"] > after:
                 items.append({"id": r["id"], "kind": "user", "ts": ts,
@@ -448,6 +548,17 @@ def activity(task_id: str, board: Optional[str] = Query(None), run: Optional[int
     file_list.sort(key=lambda e: (e["in_workspace"], -(e["last_at"] or 0)))
 
     live = bool(chosen and chosen.get("ended_at") is None and task["status"] == "running")
+    hint = None
+    if not session:
+        if not runs:
+            hint = "Card ainda não foi executado por nenhum worker."
+        elif chosen and chosen.get("outcome") == "blocked" and not _log_path(slug, task_id):
+            hint = "Card bloqueado sem worker ter rodado (bloqueio vindo de outro card ou do orquestrador)."
+        elif live:
+            hint = "Worker iniciando, sessão ainda não gravada."
+        else:
+            hint = "Sessão do worker não encontrada no state.db do profile."
+    tail = _log_tail(slug, task_id) if (live or not session) else ""
     return {
         "task_id": task_id, "board": slug, "status": task["status"],
         "profile": profile or "", "model": model or "", "provider": provider or "",
@@ -460,7 +571,8 @@ def activity(task_id: str, board: Optional[str] = Query(None), run: Optional[int
                                                   "input_tokens", "output_tokens", "cache_read_tokens",
                                                   "reasoning_tokens", "estimated_cost_usd", "actual_cost_usd",
                                                   "last_activity_at")} if session else None),
-        "session_hint": None if session else ("sem execução ainda" if not runs else "sessão do worker não encontrada"),
+        "session_hint": hint,
+        "log_tail": tail,
         "items": items, "cursor": last_id, "incremental": after > 0,
         "files": file_list,
         "workspace": task["workspace_path"] or "",

@@ -3,7 +3,7 @@
   "label": "Kanban Premium",
   "description": "Camada premium para o Kanban nativo: visual novo, profile + modelo em cada card e painel do agente (chat do worker e arquivos modificados) no drawer. Somente leitura.",
   "icon": "Package",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "tab": {
     "path": "/kanban-premium",
     "hidden": true

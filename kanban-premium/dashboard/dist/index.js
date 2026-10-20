@@ -345,16 +345,49 @@
         stat("Duração", fmtDur(dur)) + stat("Custo", cost != null ? "$" + Number(cost).toFixed(cost < 0.1 ? 4 : 2) : "–") +
       "</div>" : "") +
       '<div class="kp-tabs">' + tab(st, "chat", "Chat", d.items_total || 0) + tab(st, "files", "Arquivos", (d.files || []).length) +
+        tab(st, "term", "Terminal", termCount(st)) +
         '<span class="kp-tabs-fill"></span>' +
         (st.tab === "chat" ? '<label class="kp-toggle"><input type="checkbox" data-kp-act="replies"' + (st.onlyReplies ? " checked" : "") + "> só respostas</label>" : "") +
         runSel + "</div>";
+  }
+
+  function termItems(st) {
+    return (st.items || []).filter(function (i) { return i.kind === "tool" && i.name === "terminal"; });
+  }
+  function termCount(st) { return termItems(st).length; }
+
+  function renderTerm(st) {
+    var d = st.data, list = termItems(st), out = [];
+    var running = list.filter(function (i) { return i.pending; });
+    running.forEach(function (it) {
+      var secs = Math.max(0, Date.now() / 1000 - (it.ts || 0));
+      out.push('<div class="kp-run-now"><div class="kp-run-now-head"><i></i>executando agora<span>' + fmtDur(secs) + "</span></div>" +
+        '<pre class="kp-code kp-term">$ ' + esc(it.command || it.label || "") + "</pre>" +
+        '<div class="kp-muted">o Hermes grava a saída do comando quando ele termina; ela aparece aqui sozinha</div></div>');
+    });
+    list.slice().reverse().forEach(function (it) {
+      if (it.pending) return;
+      out.push('<details class="kp-term-item' + (it.ok ? "" : " is-err") + '" data-kp-id="t' + esc(it.id) + '"' + (st.open["t" + it.id] ? " open" : "") + ">" +
+        '<summary><span class="kp-tool-dot"></span><span class="kp-term-cmd">$ ' + esc((it.command || it.label || "").split("\n")[0]) + "</span>" +
+        '<span class="kp-tool-time">' + fmtTime(it.ts) + (it.done_ts && it.ts ? " · " + fmtDur(it.done_ts - it.ts) : "") + "</span></summary>" +
+        (it.command && it.command.indexOf("\n") >= 0 ? '<pre class="kp-code kp-term">$ ' + esc(it.command) + "</pre>" : "") +
+        '<pre class="kp-code kp-term kp-code--out">' + esc(it.output || (it.lost ? "(sem retorno: o worker encerrou antes do fim do comando)" : "(sem saída)")) + "</pre></details>");
+    });
+    var tailUseful = d.log_tail && d.log_tail.replace(/^\s*Session:.*$/gm, "").trim();
+    if (tailUseful) {
+      out.push('<div class="kp-files-head">Log do worker' + (d.live ? " (ao vivo)" : "") + "</div>" +
+        '<pre class="kp-code kp-term kp-log">' + esc(d.log_tail) + "</pre>");
+    }
+    if (!out.length) out.push('<div class="kp-empty">Nenhum comando de terminal nesta execução.</div>');
+    return out.join("");
   }
 
   function renderChat(st) {
     var d = st.data, items = st.items || [];
     if (!d.session) {
       return '<div class="kp-empty">' + esc(d.session_hint || "Sem sessão do worker") +
-        (d.run && d.run.summary ? '<div class="kp-summary kp-md">' + mdLite(d.run.summary) + "</div>" : "") + "</div>";
+        (d.run && d.run.summary ? '<div class="kp-summary kp-md"><b>Motivo / resumo do run:</b><br>' + mdLite(d.run.summary) + "</div>" : "") +
+        (d.log_tail ? '<pre class="kp-code kp-term kp-log" style="text-align:left">' + esc(d.log_tail) + "</pre>" : "") + "</div>";
     }
     var key = providerKey(d.provider, d.model) || "unknown";
     var out = [], toolRun = [];
@@ -364,10 +397,13 @@
     };
     items.forEach(function (it) {
       if (it.kind === "tool") {
-        toolRun.push('<details class="kp-tool' + (it.ok ? "" : " is-err") + '" data-kp-id="' + esc(it.id) + '"' + (st.open[it.id] ? " open" : "") + ">" +
+        toolRun.push('<details class="kp-tool' + (it.pending ? " is-pending" : it.ok ? "" : " is-err") + '" data-kp-id="' + esc(it.id) + '"' + (st.open[it.id] ? " open" : "") + ">" +
           '<summary><span class="kp-tool-dot"></span><span class="kp-tool-name">' + esc(it.name) + "</span>" +
           '<span class="kp-tool-label">' + esc(it.label || "") + '</span><span class="kp-tool-time">' + fmtTime(it.ts) + "</span></summary>" +
-          (it.output ? '<pre class="kp-code kp-code--out">' + esc(it.output) + "</pre>" : '<div class="kp-muted">sem retorno</div>') +
+          (it.command ? '<pre class="kp-code kp-term">$ ' + esc(it.command) + "</pre>" : "") +
+          (it.pending ? '<div class="kp-muted">executando…</div>' :
+            it.output ? '<pre class="kp-code kp-code--out">' + esc(it.output) + "</pre>" :
+            '<div class="kp-muted">' + (it.lost ? "sem retorno: o worker encerrou antes do fim" : "sem retorno") + "</div>") +
           "</details>");
         return;
       }
@@ -422,7 +458,7 @@
     var stick = body ? body.scrollHeight - body.scrollTop - body.clientHeight < 40 : true;
     var prevTop = body ? body.scrollTop : 0;
     panel.innerHTML = renderHead(st) + '<div class="kp-pane kp-pane--' + st.tab + '">' +
-      (st.tab === "chat" ? renderChat(st) : renderFiles(st)) + "</div>";
+      (st.tab === "chat" ? renderChat(st) : st.tab === "term" ? renderTerm(st) : renderFiles(st)) + "</div>";
     var nb = panel.querySelector(".kp-pane");
     nb.scrollTop = st.tab === "chat" && (stick || st.firstPaint) ? nb.scrollHeight : (st.firstPaint ? 0 : prevTop);
     st.firstPaint = false;
@@ -437,9 +473,12 @@
     if (q.length) url += "?" + q.join("&");
     getJSON(withBoard(url)).then(function (d) {
       if (incremental && st.data && d.incremental) {
-        var seen = {};
-        st.items.forEach(function (i) { seen[i.id] = 1; });
-        d.items.forEach(function (i) { if (!seen[i.id]) st.items.push(i); });
+        var pos = {};
+        st.items.forEach(function (i, n) { pos[i.id] = n; });
+        d.items.forEach(function (i) {
+          if (pos[i.id] != null) st.items[pos[i.id]] = i;
+          else { pos[i.id] = st.items.length; st.items.push(i); }
+        });
       } else {
         st.items = d.items || [];
       }
@@ -460,7 +499,9 @@
   function armPoll(st) {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (activeTask !== st.id || !st.data || !st.data.live || st.run) return;
-    pollTimer = setTimeout(function () { if (activeTask === st.id) load(st, true); }, 4000);
+    // sem sessão ainda (worker iniciando): recarrega completo até a sessão aparecer
+    var incr = !!st.data.session;
+    pollTimer = setTimeout(function () { if (activeTask === st.id) load(st, incr); }, 3000);
   }
 
   function onPanelEvent(e) {

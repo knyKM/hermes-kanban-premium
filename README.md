@@ -22,6 +22,7 @@ Plugin de dashboard para o [Hermes Agent](https://github.com/NousResearch/hermes
 - Cabeçalho com modelo, profile, provedor, run, status, tokens (entrada, saída, cache), ferramentas, duração e custo.
 - Aba **Chat**: respostas do modelo em markdown (código e tabelas), chamadas de ferramenta compactas que expandem para mostrar o retorno, prompt do worker recolhido, filtro "só respostas" e seletor de run quando houve mais de uma tentativa. Com o card rodando, atualiza a cada 4s trazendo só o que é novo.
 - Aba **Arquivos**: arquivos tocados pelo worker, separados entre "fora do workspace" e "workspace do card", com ação (escrito, editado, artefato), contagem, tamanho atual e botão para copiar o caminho.
+- Aba **Terminal**: comandos executados pelo worker com a saída de cada um e o tempo, mais um bloco "executando agora" para o comando em andamento.
 
 ## Como funciona
 
@@ -70,6 +71,7 @@ Para remover: tire `kanban-premium` do `plugins.enabled` e apague a pasta.
 
 ## Limitações conhecidas
 
+- O Hermes grava a saída de um comando só quando ele termina e o log do worker não faz streaming. Durante a execução o painel mostra o comando em "executando agora" com o tempo decorrido; a saída aparece quando o comando acaba.
 - Arquivos alterados só por comando de terminal (`echo > arquivo`, `sed -i`) não entram na lista. Em worktree git o `git status` cobre; em workspace scratch e caminhos externos, não.
 - Arquivo escrito com caminho relativo pode aparecer como "não existe", porque não dá para saber em que pasta o caminho foi resolvido.
 - Os ícones dos provedores são marcas simples desenhadas para o plugin, não os logos oficiais.
