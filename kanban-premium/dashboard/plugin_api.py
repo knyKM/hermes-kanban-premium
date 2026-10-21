@@ -273,6 +273,11 @@ def _session_row(profile: Optional[str], sid: Optional[str]) -> Optional[dict]:
 
 # ---------------------------------------------------------------- /cards
 
+def _same_model(a: Optional[str], b: Optional[str]) -> bool:
+    norm = lambda x: str(x or "").lower().rsplit("/", 1)[-1].strip()
+    return norm(a) == norm(b)
+
+
 @router.get("/cards")
 def cards(ids: str = Query(..., max_length=6000), board: Optional[str] = Query(None)):
     want = [i for i in (x.strip() for x in ids.split(",")) if _ID_RE.match(i)][:300]
@@ -298,21 +303,34 @@ def cards(ids: str = Query(..., max_length=6000), board: Optional[str] = Query(N
                     "SELECT id, profile, status, outcome, ended_at, metadata FROM task_runs "
                     "WHERE task_id=? ORDER BY id DESC LIMIT 1", (t["id"],)).fetchone()
                 run = dict(run) if run else None
-                profile = (run or {}).get("profile") or t["assignee"]
-                info = {"board": slug, "profile": profile or "", "status": t["status"],
-                        "model": "", "provider": "", "source": "", "live": False}
-                sid = _session_id_for(slug, t, run, True) if run else None
+                live = bool(run and run.get("ended_at") is None and t["status"] == "running")
+                run_profile = (run or {}).get("profile")
+                assignee = t["assignee"]
+                # O card mostra quem vai rodar a PRÓXIMA execução: se o card foi reatribuído
+                # (outro profile) ou ganhou override de modelo depois do último run, a sessão
+                # antiga não vale mais. Só o run ativo manda sobre o assignee.
+                reassigned = bool(assignee and run_profile and assignee != run_profile)
+                profile = run_profile if (live or not assignee) else assignee
+                info = {"board": slug, "profile": profile or "", "assignee": assignee or "",
+                        "status": t["status"], "model": "", "provider": "", "source": "", "live": False}
                 sess = None
-                try:
-                    sess = _session_row(profile, sid)
-                except Exception:
-                    sess = None
+                if run and (live or not reassigned):
+                    sid = _session_id_for(slug, t, run, True)
+                    try:
+                        sess = _session_row(run_profile or profile, sid)
+                    except Exception:
+                        sess = None
+                ovr = t["model_override"]
+                if sess and sess.get("model") and ovr and not live and not _same_model(ovr, sess["model"]):
+                    sess = None  # override trocado depois do último run
                 if sess and sess.get("model"):
                     info.update(model=sess["model"], provider=sess.get("billing_provider") or "", source="session")
-                elif t["model_override"]:
-                    info.update(model=t["model_override"], provider=t["provider_override"] or "", source="override")
+                elif ovr:
+                    info.update(model=ovr, provider=t["provider_override"] or "", source="override")
                 elif profile and profile in prof:
                     info.update(model=prof[profile]["model"], provider=prof[profile]["provider"], source="profile")
+                if reassigned and not live:
+                    info["previous"] = run_profile
                 info["live"] = bool(run and run.get("ended_at") is None and t["status"] == "running")
                 out[t["id"]] = info
     return {"cards": out}

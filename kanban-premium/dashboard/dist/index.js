@@ -191,12 +191,35 @@
     setAttr(who, "data-kp-model", info.model || "");
     setAttr(who, "data-kp-provider", key || "none");
     setAttr(who, "title", (info.profile || "") + (info.model ? " · " + info.model : "") +
-      (info.source === "profile" ? " (modelo do profile)" : info.source === "override" ? " (override do card)" : ""));
+      (info.source === "profile" ? " (modelo do profile)" : info.source === "override" ? " (override do card)" : "") +
+      (info.previous ? " · reatribuído, antes @" + info.previous : ""));
     if (key) {
       var uri = iconUri(key);
       if (who.style.getPropertyValue("--kp-icon") !== uri) who.style.setProperty("--kp-icon", uri);
     }
   }
+
+  function cardAssignee(card) {
+    var who = card.querySelector(".hermes-kanban-card-meta .hermes-kanban-assignee");
+    return who ? who.textContent.replace(/^@/, "").trim() : "";
+  }
+
+  // Qualquer escrita na API do Kanban (reassign, troca de modelo, bulk) invalida o cache
+  // dos chips, para o ícone do modelo refletir a mudança sem esperar o TTL.
+  (function hookWrites() {
+    if (window.__kpFetchHooked || !window.fetch) return;
+    window.__kpFetchHooked = true;
+    var orig = window.fetch;
+    window.fetch = function (input, init) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+      var p = orig.apply(this, arguments);
+      if (method !== "GET" && url.indexOf("/api/plugins/kanban/") >= 0) {
+        p.then(function () { setTimeout(function () { CARD_INFO = {}; schedule(); }, 400); }, function () {});
+      }
+      return p;
+    };
+  })();
 
   function decorateCards() {
     var now = Date.now(), need = [];
@@ -204,8 +227,11 @@
       var id = cardId(card);
       if (!id) return;
       var c = CARD_INFO[id];
-      if (c) applyCard(card, c.info);
-      var ttl = c && c.info.live ? 8000 : 45000;
+      // reatribuído na UI nativa: o @assignee do card mudou, refaz a busca já
+      var shown = cardAssignee(card);
+      var stale = c && c.info.assignee != null && shown !== (c.info.assignee || "");
+      if (c && !stale) applyCard(card, c.info);
+      var ttl = stale ? 0 : c && c.info.live ? 8000 : 45000;
       if ((!c || now - c.at > ttl) && !CARD_PENDING[id]) need.push(id);
     });
     if (need.length) fetchCards(need);
